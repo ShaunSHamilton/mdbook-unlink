@@ -26,24 +26,20 @@ fn main() {
         .unwrap_or_default()
         .unwrap_or_default();
 
-    if let Err(broken_links) = check_links(&ctx.book, &cfg) {
-        println!("Broken links found:");
+    if let Err(broken_links) = check_links(&ctx, &cfg) {
         for broken_link in broken_links {
-            println!("{:?}", broken_link);
+            println!("Broken Links {:?}", broken_link);
         }
         process::exit(1);
-    } else {
-        println!("No broken links found")
     }
-
-    // for item in ctx.book.iter() {
-    //     if let BookItem::Chapter(ref ch) = *item {
-    //         println!("{:#?}", ch);
-    //     }
-    // }
 }
 
-fn check_links<'e>(book: &'e Book, cfg: &UnlinkConfig) -> Result<(), Vec<BrokenLinkError<'e>>> {
+fn check_links<'e>(
+    ctx: &'e RenderContext,
+    cfg: &UnlinkConfig,
+) -> Result<(), Vec<BrokenLinkError<'e>>> {
+    let book = &ctx.book;
+    let root = &ctx.root;
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
@@ -63,8 +59,6 @@ fn check_links<'e>(book: &'e Book, cfg: &UnlinkConfig) -> Result<(), Vec<BrokenL
             }
         })
         .collect();
-
-    println!("All links: {:?}", all_links);
 
     let mut broken_links = Vec::new();
 
@@ -93,14 +87,11 @@ fn check_links<'e>(book: &'e Book, cfg: &UnlinkConfig) -> Result<(), Vec<BrokenL
                     .unwrap_or_default()
                     .contains(p)
             }) {
-                println!("Checking {:?}", ch.path);
             } else if !cfg.include_files.is_empty() {
                 continue;
             }
 
             let mut broken_link_callback = |broken_link: BrokenLink| {
-                println!("BROKEN_LINK: {:?}", broken_link.span);
-
                 // let b_link = BrokenLink {
                 //     link_type: broken_link.link_type.clone(),
                 //     reference: broken_link.reference.clone(),
@@ -151,7 +142,19 @@ fn check_links<'e>(book: &'e Book, cfg: &UnlinkConfig) -> Result<(), Vec<BrokenL
                             })
                             .collect::<Vec<_>>()
                             .join("");
-                        heading_ids.push(heading_id);
+                        // Increment heading id if it already exists
+                        let mut heading_id = heading_id;
+                        if heading_ids.contains(&heading_id) {
+                            let mut i = 1;
+                            while heading_ids.contains(&heading_id) {
+                                heading_id = format!("{}-{}", heading_id, i);
+                                i += 1;
+                            }
+                            heading_ids.push(heading_id.clone());
+                        } else {
+                            heading_ids.push(heading_id.clone());
+                        }
+
                         current_heading_events.clear();
                         in_heading = false;
                     }
@@ -162,19 +165,15 @@ fn check_links<'e>(book: &'e Book, cfg: &UnlinkConfig) -> Result<(), Vec<BrokenL
                 }
             }
 
-            // Reconstruct heading text using
-
-            println!("Heading IDs: {:?}", heading_ids);
-
             for event in parser {
-                println!("{:?}", event);
-                let res = match event {
+                match event {
                     Event::Start(ev) => match &ev {
                         Tag::Link(link_type, url, title) | Tag::Image(link_type, url, title) => {
-                            println!("1: {:?}", ev);
                             // Check if the link url without the anchor is a valid chapter
                             let mut link_location = url.to_string();
-                            println!("2: {:?}", link_location);
+                            if link_location.starts_with("http") {
+                                continue;
+                            }
                             // Remove the anchor from the link location if one exists, and store in `anchor` variable
                             let anchor = if let Some(anchor_index) = link_location.find('#') {
                                 let anchor = link_location.split_off(anchor_index).replace('#', "");
@@ -182,38 +181,40 @@ fn check_links<'e>(book: &'e Book, cfg: &UnlinkConfig) -> Result<(), Vec<BrokenL
                             } else {
                                 None
                             };
-                            println!("3: {:?}", anchor);
                             // Check if the link location is a valid chapter
                             if let Some(path) = &ch.path {
-                                println!("4: {:?}", path);
                                 let current_absolute_path =
-                                    PathBuf::from("./src/").join(link_location);
-                                println!("5: {:?}", current_absolute_path);
+                                    PathBuf::from(root.join(ctx.config.book.src.clone()))
+                                        .join(
+                                            ch.path
+                                                .as_ref()
+                                                .unwrap_or(&PathBuf::from(""))
+                                                .parent()
+                                                .unwrap_or(&PathBuf::from("")),
+                                        )
+                                        .join(link_location);
                                 let r = match current_absolute_path.canonicalize() {
                                     Ok(p) => {
                                         // Check if the anchor is valid within the linked chapter
-                                        println!("6: {:?}", p);
-                                        if let Some(anchor) = anchor {
-                                            println!("7: {:?}", anchor);
-                                            if heading_ids.contains(&anchor) {
-                                                println!("8: {:?}", anchor);
-                                                None
-                                            } else {
-                                                let broken_link =
-                                                    BrokenLinkError::NonExistentHeading {
-                                                        link_location: p
-                                                            .to_str()
-                                                            .unwrap_or_default()
-                                                            .to_string(),
-                                                        link: ev,
-                                                    };
-                                                println!("9: {:?}", broken_link);
-                                                Some(broken_link)
-                                            }
-                                        } else {
-                                            println!("10:");
-                                            None
-                                        }
+                                        // TODO: Broken - need to check if anchor exists in other chapters
+                                        // if let Some(anchor) = anchor {
+                                        //     if heading_ids.contains(&anchor) {
+                                        //         None
+                                        //     } else {
+                                        //         let broken_link =
+                                        //             BrokenLinkError::NonExistentHeading {
+                                        //                 link_location: p
+                                        //                     .to_str()
+                                        //                     .unwrap_or_default()
+                                        //                     .to_string(),
+                                        //                 link: ev,
+                                        //             };
+                                        //         Some(broken_link)
+                                        //     }
+                                        // } else {
+                                        //     None
+                                        // }
+                                        None
                                     }
                                     Err(e) => {
                                         let broken_link = BrokenLinkError::NonExistentChapter {
@@ -223,15 +224,14 @@ fn check_links<'e>(book: &'e Book, cfg: &UnlinkConfig) -> Result<(), Vec<BrokenL
                                                 .to_string(),
                                             link: ev,
                                         };
-                                        println!("11: {:?}", e);
                                         Some(broken_link)
                                     }
                                 };
-                                println!("12: {:?}", r);
+                                if let Some(broken_link) = r {
+                                    broken_links.push(broken_link);
+                                }
                             }
-                            println!("13:");
                             // All links valid
-                            None
                         }
                         _ => {
                             continue;
@@ -241,9 +241,6 @@ fn check_links<'e>(book: &'e Book, cfg: &UnlinkConfig) -> Result<(), Vec<BrokenL
                         continue;
                     }
                 };
-                if let Some(broken_link) = res {
-                    broken_links.push(broken_link);
-                }
             }
         }
     }

@@ -1,0 +1,16 @@
+[book]
+authors = ["Shaun Hamilton"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Unlink"
+
+[output.unlink]
+ignore-files = []
+# A list of glob patterns to ignore when checking links
+ignore-links = []
+# Whether or not to check draft chapters
+# Default: true
+check-drafts = true
+# A list of files to include when checking links
+include-files = []

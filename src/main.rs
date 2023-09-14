@@ -14,6 +14,14 @@ use std::{error::Error, io};
 /// A semver range specifying which versions of `mdbook` this crate supports.
 pub const COMPATIBLE_MDBOOK_VERSIONS: &str = "^0.4.0";
 
+// TODO: Need list of all links
+// Split links into (path, anchor)
+// Default path to `./`
+// Default anchor to None
+// 1. Check relative path is valid
+// 2. Check anchor link is valid with location
+//   - Get file -> Find all anchors -> Compare
+
 fn main() {
     let mut stdin = io::stdin();
     let ctx = RenderContext::from_json(&mut stdin).unwrap();
